@@ -14,6 +14,10 @@ type Currency = keyof typeof EXCHANGE_RATES;
 
 interface BackendTicker {
   symbol: string;
+  buyInPrice: number;
+  buyInCurrency: Currency;
+  positionSize: number;
+  type: 'long' | 'short';
 }
 
 interface StockPrice {
@@ -70,6 +74,7 @@ export default function App() {
 
       setPositions(currentPositions =>
         stocks.map(stock => {
+          const savedTicker = tickers.find(t => t.symbol === stock.symbol);
           const existing = currentPositions.find(pos => pos.ticker === stock.symbol);
 
           return {
@@ -77,10 +82,10 @@ export default function App() {
             ticker: stock.symbol,
             currentPrice: stock.currentPrice,
             dailyChange: stock.changePercent,
-            buyInPrice: existing?.buyInPrice ?? stock.currentPrice,
-            buyInCurrency: existing?.buyInCurrency ?? 'USD',
-            positionSize: existing?.positionSize ?? 1,
-            type: existing?.type ?? 'long',
+            buyInPrice: existing?.buyInPrice ?? savedTicker?.buyInPrice ?? stock.currentPrice,
+            buyInCurrency: existing?.buyInCurrency ?? savedTicker?.buyInCurrency ?? 'USD',
+            positionSize: existing?.positionSize ?? savedTicker?.positionSize ?? 0,
+            type: existing?.type ?? savedTicker?.type ?? 'long',
             status: stock.status,
           };
         })
@@ -131,11 +136,34 @@ export default function App() {
       ? 0
       : positions.reduce((sum, pos) => sum + pos.dailyChange, 0) / positions.length;
 
-  const updatePosition = (id: string, field: keyof Position, value: any) => {
-    setPositions(positions.map(pos =>
-      pos.id === id ? { ...pos, [field]: value } : pos
-    ));
+const updatePosition = (id: string, field: keyof Position, value: any) => {
+  const updatedPositions = positions.map(pos =>
+    pos.id === id ? { ...pos, [field]: value } : pos
+    );
+
+    setPositions(updatedPositions);
+
+    const updatedPosition = updatedPositions.find(pos => pos.id === id);
+
+    if (updatedPosition) {
+      savePosition(updatedPosition);
+    }
   };
+
+  async function savePosition(position: Position) {
+    await fetch(`/tickers/${encodeURIComponent(position.ticker)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        buyInPrice: position.buyInPrice,
+        buyInCurrency: position.buyInCurrency,
+        positionSize: position.positionSize,
+        type: position.type,
+      }),
+    });
+  }
 
   const addPosition = async () => {
     const ticker = newTicker.trim().toUpperCase();
